@@ -1,63 +1,91 @@
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
+const supabase = require("../config/supabaseClient");
+const { PrismaClient } = require("@prisma/client");
 
-// Temporary in-memory placeholder — we'll replace this with Prisma once DB is connected
-const users = [];
-
-const JWT_SECRET = process.env.JWT_SECRET || "temporary_secret_change_this";
+const prisma = new PrismaClient();
 
 // REGISTER
 const register = async (req, res) => {
   try {
-    const { email, password, role } = req.body;
+    const { email, password, full_name, role, phone } = req.body;
 
     if (!email || !password || !role) {
       return res.status(400).json({ error: "Email, password, and role are required." });
     }
 
-    const existingUser = users.find((u) => u.email === email);
-    if (existingUser) {
-      return res.status(400).json({ error: "User already exists." });
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+
+    if (authError) {
+      return res.status(400).json({ error: authError.message });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const userId = authData.user.id;
 
-    const newUser = {
-      id: users.length + 1,
-      email,
-      password: hashedPassword,
-      role,
-    };
+    const newUserProfile = await prisma.users.create({
+      data: {
+        id: userId,
+        email,
+        full_name: full_name || null,
+        role,
+        phone: phone || null,
+      },
+    });
 
-    users.push(newUser);
+    // Create role-specific profile row
+    if (role === "ORGANISATION") {
+      await prisma.organisations.create({
+        data: {
+          user_id: userId,
+          organisation_name: full_name || "Unnamed Organisation",
+          email,
+          phone: phone || null,
+        },
+      });
+    } else if (role === "PROSPECTIVE_PARENT") {
+      await prisma.prospective_parents.create({
+        data: {
+          user_id: userId,
+          parent_reference: `PARENT-${Date.now()}`,
+        },
+      });
+    } else if (role === "VOLUNTEER") {
+      await prisma.volunteers.create({
+        data: {
+          user_id: userId,
+          volunteer_code: `VOL-${Date.now()}`,
+          volunteer_type: "MENTOR", // default; can be changed later
+        },
+      });
+    }
 
-    res.status(201).json({ message: "User registered successfully", userId: newUser.id });
+    res.status(201).json({ message: "User registered successfully", user: newUserProfile });
   } catch (err) {
-    res.status(500).json({ error: "Something went wrong." });
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong.", details: err.message });
   }
 };
 
-// LOGIN
+// LOGIN stays the same as before
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = users.find((u) => u.email === email);
-    if (!user) {
-      return res.status(401).json({ error: "Invalid credentials." });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      return res.status(401).json({ error: error.message });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: "Invalid credentials." });
-    }
-
-    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, {
-      expiresIn: "7d",
+    res.json({
+      message: "Login successful",
+      access_token: data.session.access_token,
+      user: data.user,
     });
-
-    res.json({ message: "Login successful", token });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Something went wrong." });
   }
 };

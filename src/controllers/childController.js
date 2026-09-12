@@ -1,65 +1,77 @@
-// Temporary in-memory storage — will switch to Prisma once DB is connected
-const children = [];
-let nextId = 1;
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 
 // CREATE a child profile
-const createChild = (req, res) => {
+const createChild = async (req, res) => {
   try {
-    const {
-      age,
-      educationLevel,
-      educationalGoals,
-      financialNeeds,
-      mentorshipNeeded,
-      adoptionStatus,
-    } = req.body;
+    const { age_group, education_level, sibling_group_id } = req.body;
 
-    if (!age || !educationLevel) {
-      return res.status(400).json({ error: "Age and education level are required." });
+    // Find the organisation linked to the logged-in user
+    const organisation = await prisma.organisations.findFirst({
+      where: { user_id: req.user.id },
+    });
+
+    if (!organisation) {
+      return res.status(400).json({ error: "No organisation profile found for this user." });
     }
 
-    const newChild = {
-      id: nextId++,
-      protectedId: `CHILD-${Date.now()}`, // placeholder for a protected/anonymized ID
-      age,
-      educationLevel,
-      educationalGoals: educationalGoals || "",
-      financialNeeds: financialNeeds || "",
-      mentorshipNeeded: mentorshipNeeded || false,
-      adoptionStatus: adoptionStatus || "not-applicable",
-      createdBy: req.user.userId,
-    };
-
-    children.push(newChild);
+    const newChild = await prisma.children.create({
+      data: {
+        child_code: `CHILD-${Date.now()}`,
+        age_group: age_group || null,
+        education_level: education_level || null,
+        organisation_id: organisation.id,
+        sibling_group_id: sibling_group_id || null,
+      },
+    });
 
     res.status(201).json({ message: "Child profile created successfully", child: newChild });
   } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong.", details: err.message });
+  }
+};
+
+// GET all child profiles (basic public-safe view)
+const getAllChildren = async (req, res) => {
+  try {
+    const children = await prisma.children.findMany({
+      select: {
+        id: true,
+        child_code: true,
+        age_group: true,
+        education_level: true,
+        general_status: true,
+      },
+    });
+
+    res.json({ children });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Something went wrong." });
   }
 };
 
-// GET all child profiles (list view — protects sensitive info)
-const getAllChildren = (req, res) => {
-  const publicView = children.map((c) => ({
-    id: c.id,
-    protectedId: c.protectedId,
-    age: c.age,
-    educationLevel: c.educationLevel,
-    adoptionStatus: c.adoptionStatus,
-  }));
+// GET one child profile by ID
+const getChildById = async (req, res) => {
+  try {
+    const child = await prisma.children.findUnique({
+      where: { id: req.params.id },
+      include: {
+        educational_needs: true,
+        funding_goals: true,
+      },
+    });
 
-  res.json({ children: publicView });
-};
+    if (!child) {
+      return res.status(404).json({ error: "Child profile not found." });
+    }
 
-// GET one child profile by ID (fuller detail — later we'll restrict by role)
-const getChildById = (req, res) => {
-  const child = children.find((c) => c.id === parseInt(req.params.id));
-
-  if (!child) {
-    return res.status(404).json({ error: "Child profile not found." });
+    res.json({ child });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong." });
   }
-
-  res.json({ child });
 };
 
 module.exports = { createChild, getAllChildren, getChildById };

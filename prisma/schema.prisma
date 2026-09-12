@@ -1,0 +1,366 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model audit_logs {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String?   @db.Uuid
+  action      String
+  entity_type String?
+  entity_id   String?   @db.Uuid
+  description String?
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  users       users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model child_opportunities {
+  id                    String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id              String?        @db.Uuid
+  opportunity_id        String?        @db.Uuid
+  relevance_score       Decimal?       @db.Decimal(5, 2)
+  recommendation_reason String?
+  status                String?        @default("RECOMMENDED")
+  created_at            DateTime?      @default(now()) @db.Timestamptz(6)
+  children              children?      @relation(fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  opportunities         opportunities? @relation(fields: [opportunity_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([child_id, opportunity_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model children {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_code          String                @unique
+  age_group           String?
+  education_level     String?
+  organisation_id     String?               @db.Uuid
+  sibling_group_id    String?               @db.Uuid
+  general_status      String?               @default("ACTIVE")
+  created_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  child_opportunities child_opportunities[]
+  organisations       organisations?        @relation(fields: [organisation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sibling_groups      sibling_groups?       @relation(fields: [sibling_group_id], references: [id], onUpdate: NoAction)
+  educational_needs   educational_needs[]
+  funding_goals       funding_goals[]
+  learning_pathways   learning_pathways[]
+  mentor_matches      mentor_matches[]
+
+  @@index([child_code], map: "idx_children_code")
+  @@index([organisation_id], map: "idx_children_org")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model educational_needs {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id        String?          @db.Uuid
+  subject         String
+  education_level String?
+  description     String?
+  priority        Int?             @default(3)
+  estimated_cost  Decimal?         @default(0) @db.Decimal(12, 2)
+  status          need_status?     @default(OPEN)
+  created_at      DateTime?        @default(now()) @db.Timestamptz(6)
+  children        children?        @relation(fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  funding_goals   funding_goals[]
+  mentor_matches  mentor_matches[]
+
+  @@index([child_id], map: "idx_needs_child")
+  @@index([status], map: "idx_needs_status")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model family_requests {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parent_id           String?              @db.Uuid
+  organisation_id     String?              @db.Uuid
+  request_reference   String               @unique
+  status              request_status?      @default(SUBMITTED)
+  submitted_at        DateTime?            @default(now()) @db.Timestamptz(6)
+  reviewed_at         DateTime?            @db.Timestamptz(6)
+  notes               String?
+  organisations       organisations?       @relation(fields: [organisation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  prospective_parents prospective_parents? @relation(fields: [parent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status], map: "idx_family_requests_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model funding_goals {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id             String?                @db.Uuid
+  educational_need_id  String?                @db.Uuid
+  title                String
+  description          String?
+  category             String?
+  target_amount        Decimal                @db.Decimal(12, 2)
+  funded_amount        Decimal?               @default(0) @db.Decimal(12, 2)
+  status               funding_status?        @default(OPEN)
+  created_at           DateTime?              @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime?              @default(now()) @db.Timestamptz(6)
+  children             children?              @relation(fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  educational_needs    educational_needs?     @relation(fields: [educational_need_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  funding_transactions funding_transactions[]
+
+  @@index([child_id], map: "idx_funding_child")
+  @@index([status], map: "idx_funding_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model funding_transactions {
+  id                    String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  funding_goal_id       String?        @db.Uuid
+  volunteer_id          String?        @db.Uuid
+  amount                Decimal        @db.Decimal(12, 2)
+  transaction_reference String?        @unique
+  status                String?        @default("SUCCESS")
+  created_at            DateTime?      @default(now()) @db.Timestamptz(6)
+  funding_goals         funding_goals? @relation(fields: [funding_goal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  volunteers            volunteers?    @relation(fields: [volunteer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model learning_pathways {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id      String?         @db.Uuid
+  title         String
+  career_area   String?
+  description   String?
+  created_at    DateTime?       @default(now()) @db.Timestamptz(6)
+  children      children?       @relation(fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pathway_steps pathway_steps[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model mentor_matches {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id            String?            @db.Uuid
+  volunteer_id        String?            @db.Uuid
+  educational_need_id String?            @db.Uuid
+  match_score         Decimal?           @db.Decimal(5, 2)
+  match_reason        String?
+  status              match_status?      @default(SUGGESTED)
+  created_at          DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?          @default(now()) @db.Timestamptz(6)
+  children            children?          @relation(fields: [child_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  educational_needs   educational_needs? @relation(fields: [educational_need_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  volunteers          volunteers?        @relation(fields: [volunteer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([child_id], map: "idx_matches_child")
+  @@index([volunteer_id], map: "idx_matches_volunteer")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model notifications {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String?   @db.Uuid
+  title             String
+  message           String
+  notification_type String?
+  is_read           Boolean?  @default(false)
+  created_at        DateTime? @default(now()) @db.Timestamptz(6)
+  users             users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model opportunities {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title               String
+  description         String?
+  opportunity_type    String
+  provider_name       String?
+  subject             String?
+  education_level     String?
+  eligibility         String?
+  deadline            DateTime?             @db.Date
+  application_url     String?
+  is_active           Boolean?              @default(true)
+  created_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  child_opportunities child_opportunities[]
+
+  @@index([opportunity_type], map: "idx_opportunities_type")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model organisations {
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                String?                @db.Uuid
+  organisation_name      String
+  registration_reference String?
+  organisation_type      String?
+  email                  String?
+  phone                  String?
+  verification_status    verification_status?   @default(PENDING)
+  verified_at            DateTime?              @db.Timestamptz(6)
+  created_at             DateTime?              @default(now()) @db.Timestamptz(6)
+  children               children[]
+  family_requests        family_requests[]
+  users                  users?                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  verification_records   verification_records[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model pathway_steps {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pathway_id        String?            @db.Uuid
+  step_number       Int
+  title             String
+  description       String?
+  resource_url      String?
+  completed         Boolean?           @default(false)
+  learning_pathways learning_pathways? @relation(fields: [pathway_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model prospective_parents {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String?              @db.Uuid
+  parent_reference    String               @unique
+  preferred_region    String?
+  preferred_age_range String?
+  sibling_preference  String?
+  motivation_summary  String?
+  verification_status verification_status? @default(PENDING)
+  created_at          DateTime?            @default(now()) @db.Timestamptz(6)
+  family_requests     family_requests[]
+  users               users?               @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model sibling_groups {
+  id                       String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  group_code               String     @unique
+  keep_together_preference Boolean?   @default(true)
+  created_at               DateTime?  @default(now()) @db.Timestamptz(6)
+  children                 children[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model users {
+  id                                                           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                                        String                 @unique
+  full_name                                                    String?
+  role                                                         user_role
+  phone                                                        String?
+  is_active                                                    Boolean?               @default(true)
+  created_at                                                   DateTime?              @default(now()) @db.Timestamptz(6)
+  updated_at                                                   DateTime?              @default(now()) @db.Timestamptz(6)
+  audit_logs                                                   audit_logs[]
+  notifications                                                notifications[]
+  organisations                                                organisations[]
+  prospective_parents                                          prospective_parents[]
+  verification_records_verification_records_user_idTousers     verification_records[] @relation("verification_records_user_idTousers")
+  verification_records_verification_records_verified_byTousers verification_records[] @relation("verification_records_verified_byTousers")
+  volunteers                                                   volunteers[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model verification_records {
+  id                                            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                                       String?              @db.Uuid
+  organisation_id                               String?              @db.Uuid
+  verification_type                             String
+  status                                        verification_status? @default(PENDING)
+  verified_by                                   String?              @db.Uuid
+  verified_at                                   DateTime?            @db.Timestamptz(6)
+  expiry_date                                   DateTime?            @db.Date
+  created_at                                    DateTime?            @default(now()) @db.Timestamptz(6)
+  organisations                                 organisations?       @relation(fields: [organisation_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_verification_records_user_idTousers     users?               @relation("verification_records_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_verification_records_verified_byTousers users?               @relation("verification_records_verified_byTousers", fields: [verified_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model volunteer_skills {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  volunteer_id      String?     @db.Uuid
+  skill_name        String
+  proficiency_level String?
+  created_at        DateTime?   @default(now()) @db.Timestamptz(6)
+  volunteers        volunteers? @relation(fields: [volunteer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([skill_name], map: "idx_volunteer_skills")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model volunteers {
+  id                          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                     String?                @db.Uuid
+  volunteer_code              String                 @unique
+  volunteer_type              volunteer_type
+  availability_hours_per_week Int?                   @default(0)
+  preferred_language          String?
+  preferred_age_group         String?
+  location_region             String?
+  bio                         String?
+  verified                    Boolean?               @default(false)
+  created_at                  DateTime?              @default(now()) @db.Timestamptz(6)
+  funding_transactions        funding_transactions[]
+  mentor_matches              mentor_matches[]
+  volunteer_skills            volunteer_skills[]
+  users                       users?                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([volunteer_type], map: "idx_volunteers_type")
+}
+
+enum funding_status {
+  OPEN
+  PARTIALLY_FUNDED
+  FUNDED
+  CLOSED
+}
+
+enum match_status {
+  PENDING
+  SUGGESTED
+  ACCEPTED
+  DECLINED
+  COMPLETED
+}
+
+enum need_status {
+  OPEN
+  IN_PROGRESS
+  FULFILLED
+  CLOSED
+}
+
+enum request_status {
+  SUBMITTED
+  VERIFICATION
+  UNDER_REVIEW
+  REFERRED_TO_ORGANISATION
+  AUTHORIZED_PROCESS
+  CLOSED
+  REJECTED
+}
+
+enum user_role {
+  ADMIN
+  ORGANISATION
+  VOLUNTEER
+  PROSPECTIVE_PARENT
+}
+
+enum verification_status {
+  PENDING
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum volunteer_type {
+  EDUCATION_FUNDER
+  MENTOR
+  BOTH
+}
