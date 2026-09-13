@@ -4,7 +4,7 @@ const { createChild, getAllChildren, getChildById } = require("../controllers/ch
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 
 router.post("/", verifyToken, requireRole("ORGANISATION", "ADMIN"), createChild);
-router.get("/", verifyToken, getAllChildren);
-router.get("/:id", verifyToken, getChildById);
+router.get("/", getAllChildren);
+router.get("/:id", getChildById);
 
 module.exports = router;
